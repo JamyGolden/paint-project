@@ -1,0 +1,6 @@
+[workspace]
+members = [
+  "web",
+]
+default-members = ["web"]
+resolver = "2"

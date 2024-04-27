@@ -1,0 +1,9 @@
+.PatternEditor {
+    background-color: #fff;
+}
+
+.PatternEditor-cell {
+    &:hover {
+        border-color: #ccc;
+    }
+}

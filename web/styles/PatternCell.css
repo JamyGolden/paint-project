@@ -1,0 +1,60 @@
+.PatternCell {
+    display: flex;
+    height: 1rem;
+    overflow: hidden;
+    position: relative;
+    width: 1rem;
+
+    .PatternGrid--withSelection & {
+        opacity: 0.5;
+    }
+}
+
+.PatternCell--isSelected {
+    .PatternGrid--withSelection & {
+        opacity: 1;
+    }
+}
+
+.PatternCell--borderTop {
+    border-top-width: 1px;
+    border-top-style: solid;
+}
+
+.PatternCell--borderRight {
+    border-right-width: 1px;
+    border-right-style: solid;
+}
+
+.PatternCell--borderBottom {
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
+}
+
+.PatternCell--borderLeft {
+    border-left-width: 1px;
+    border-left-style: solid;
+}
+
+.PatternCell-slash {
+    display: block;
+    background: currentColor;
+    bottom: 0;
+    height: 1.5rem;
+    position: absolute;
+    width: 1px;
+    user-select: none;
+}
+
+.PatternCell-slash--backward {
+    right: 0;
+    transform-origin: bottom right;
+    transform: rotate(-45deg);
+    z-index: 1;
+}
+
+.PatternCell-slash--forward {
+    left: 0;
+    transform-origin: bottom left;
+    transform: rotate(45deg);
+}

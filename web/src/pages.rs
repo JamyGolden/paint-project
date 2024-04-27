@@ -1,0 +1,13 @@
+pub mod about;
+pub mod contact;
+pub mod home;
+pub mod login;
+pub mod not_found;
+pub mod pattern_detail;
+pub mod pattern_list;
+pub mod privacy;
+pub mod search_results;
+pub mod signup;
+pub mod terms;
+pub mod user_dashboard;
+pub mod user_pattern_editor;

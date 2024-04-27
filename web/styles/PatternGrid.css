@@ -1,0 +1,9 @@
+.PatternGrid {
+    background-color: #fff;
+}
+
+.PatternGrid-row {
+    display: flex;
+    flex-direction: row;
+    color: red;
+}
