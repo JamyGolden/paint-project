@@ -1,5 +1,8 @@
+use std::cell::RefCell;
+
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use html::ImplicitClone;
@@ -16,15 +19,14 @@ use crate::components::pattern::{
 
 use super::super::components::pattern_cell_editor::PatternCellEditor;
 use super::super::components::toolbar::Toolbar;
-use super::super::reducer::{PatternEditorAction, PatternEditorState};
 use super::super::PatternEditorFeature;
 
 const DEFAULT_COLOR: Rgb = Rgb { r: 255, g: 0, b: 0 };
 
 #[function_component(PatternEditor)]
 pub fn pattern_editor() -> Html {
-    let history_reducer = use_reducer(PatternEditorState::default);
-    let grid = history_reducer.grid.clone();
+    let grid: Rc<RefCell<RawGridType>> = use_mut_ref(HashMap::default);
+    let history_reducer: Rc<RefCell<Vec<RawGridType>>> = use_mut_ref(Vec::default);
     let mousedown_elements_handle: UseStateHandle<GridType> = use_state(IMap::default);
     let colnum_ref = use_node_ref();
     let rownum_ref = use_node_ref();
@@ -75,38 +77,41 @@ pub fn pattern_editor() -> Html {
             history_reducer.clone(),
             mousedown_elements_handle.clone(),
         ),
-        |(GridCell(col_index, row_index), updated_threads): (GridCell, IArray<Thread>),
+        |(cell_key, updated_threads): (GridCell, IArray<Thread>),
          (active_thread_cell_handle, grid, history_reducer, mousedown_elements_handle)| {
-            let mut grid: RawGridType = grid.iter().collect();
+            let grid: Rc<RefCell<RawGridType>> = grid.clone();
             let mut updated_mousedown_elements = HashMap::new();
-            // If the cell exists, copy and mutate the grid content otherwise add a new cell_tuple
-            if let Some(cell) = grid
-                .iter()
-                .find(|(&GridCell(col_id, row_id), _)| col_id == col_index && row_id == row_index)
             {
-                let previous_threads = cell.1;
-                let mut new_threads = updated_threads.clone().to_vec();
+                let grid_cloned: &RawGridType = &grid.borrow();
+                // If the cell exists, copy and mutate the grid content otherwise add a new cell_tuple
+                if let Some(cell_value) = grid_cloned.get(&cell_key) {
+                    let previous_threads = cell_value;
+                    let mut new_threads = updated_threads.clone().to_vec();
 
-                // Don't add previous Thread if updated ThreadType exists
-                for thread in previous_threads.iter() {
-                    if !new_threads
-                        .iter()
-                        .any(|Thread { thread_type, .. }| *thread_type == thread.thread_type)
-                    {
-                        new_threads.push(thread);
+                    // Don't add previous Thread if updated ThreadType exists
+                    for thread in previous_threads.iter() {
+                        if !new_threads
+                            .iter()
+                            .any(|Thread { thread_type, .. }| *thread_type == thread.thread_type)
+                        {
+                            new_threads.push(thread);
+                        }
                     }
+
+                    let updated_cell_tuple = (cell_key, IArray::from(new_threads));
+
+                    updated_mousedown_elements.insert(updated_cell_tuple.0, updated_cell_tuple.1);
                 }
+            };
 
-                let updated_cell_tuple =
-                    (GridCell(col_index, row_index), IArray::from(new_threads));
+            {
+                let mut grid = grid.borrow_mut();
+                if grid.contains_key(&cell_key) {
+                    let updated_cell_tuple = (cell_key, updated_threads.clone());
+                    grid.insert(updated_cell_tuple.0, updated_cell_tuple.1.clone());
 
-                updated_mousedown_elements.insert(updated_cell_tuple.0, updated_cell_tuple.1);
-            // Otherwise add a new cell
-            } else {
-                let updated_cell_tuple = (GridCell(col_index, row_index), updated_threads.clone());
-                grid.insert(updated_cell_tuple.0, updated_cell_tuple.1.clone());
-
-                updated_mousedown_elements.insert(updated_cell_tuple.0, updated_cell_tuple.1);
+                    updated_mousedown_elements.insert(updated_cell_tuple.0, updated_cell_tuple.1);
+                };
             };
 
             // There should only be 1 item in this iterator so .last() is always the only item
@@ -114,7 +119,10 @@ pub fn pattern_editor() -> Html {
                 active_thread_cell_handle.set((*k, v.clone()));
             }
 
-            history_reducer.dispatch(PatternEditorAction::AddHistory(grid));
+            {
+                let grid_clone: &RawGridType = &grid.borrow();
+                (*history_reducer.borrow_mut()).push(grid_clone.clone());
+            };
             mousedown_elements_handle.set(hashmap_to_imap(updated_mousedown_elements));
         },
     );
@@ -130,7 +138,7 @@ pub fn pattern_editor() -> Html {
             selected_cells_handle.clone(),
             thread_color,
         ),
-        |GridCell(col_index, row_index): GridCell,
+        |cell_key: GridCell,
          (
             active_feature,
             active_thread_cell_handle,
@@ -141,6 +149,8 @@ pub fn pattern_editor() -> Html {
             selected_cells_handle,
             thread_color,
         )| {
+            let GridCell(col_index, row_index) = cell_key;
+            let grid = grid.clone();
             match active_feature {
                 PatternEditorFeature::Brush => {
                     let mut mousedown_elements: HashMap<GridCell, IArray<Thread>> = HashMap::new();
@@ -184,11 +194,8 @@ pub fn pattern_editor() -> Html {
                         grid_size.unwrap_or(GridSize(0_usize, 0_usize));
 
                     if col_count > col_index && row_count > row_index {
-                        if let Some(cell) = grid
-                            .iter()
-                            .find(|(GridCell(col, row), _)| col_index == *col && row_index == *row)
-                        {
-                            active_thread_cell_handle.set((GridCell(cell.0 .0, cell.0 .1), cell.1));
+                        if let Some(cell_value) = (grid.borrow()).get(&cell_key) {
+                            active_thread_cell_handle.set((cell_key, cell_value.clone()));
                         } else {
                             active_thread_cell_handle
                                 .set((GridCell(col_index, row_index), IArray::default()));
@@ -221,17 +228,15 @@ pub fn pattern_editor() -> Html {
             mousedown_elements_handle.clone(),
             thread_color,
         ),
-        |GridCell(col_index, row_index): GridCell,
+        |cell_key: GridCell,
          (active_feature, is_mousedown, mousedown_elements_handle, thread_color)| {
+            let GridCell(col_index, row_index) = cell_key;
             match active_feature {
                 PatternEditorFeature::Brush => {
                     if *is_mousedown {
                         let mousedown_elements = (*mousedown_elements_handle).clone();
 
-                        if !mousedown_elements
-                            .iter()
-                            .any(|(k, _)| k.0 == col_index && k.1 == row_index)
-                        {
+                        if !mousedown_elements.contains_key(&cell_key) {
                             let mut mousedown_elements: HashMap<GridCell, IArray<Thread>> =
                                 mousedown_elements.iter().collect();
 
@@ -257,31 +262,23 @@ pub fn pattern_editor() -> Html {
         (
             (*active_feature_handle).clone(),
             grid.clone(),
-            history_reducer.clone(),
             is_mousedown_handle.clone(),
             mousedown_elements_handle.clone(),
         ),
-        |_: MouseEvent,
-         (
-            active_feature,
-            grid,
-            history_reducer,
-            is_mousedown_handle,
-            mousedown_elements_handle,
-        )| {
+        |_: MouseEvent, (active_feature, grid, is_mousedown_handle, mousedown_elements_handle)| {
             if **is_mousedown_handle {
                 match active_feature {
                     PatternEditorFeature::Brush | PatternEditorFeature::Fill => {
                         let mousedown_elements: HashMap<GridCell, IArray<Thread>> =
                             (*mousedown_elements_handle).iter().collect();
-                        let mut grid: RawGridType = grid.iter().collect();
 
-                        grid.extend(mousedown_elements.clone());
+                        {
+                            let mut grid = grid.borrow_mut();
+                            grid.extend(mousedown_elements.clone());
+                        };
 
                         mousedown_elements_handle.set(IMap::default());
                         is_mousedown_handle.set(false);
-
-                        history_reducer.dispatch(PatternEditorAction::AddHistory(grid));
                     }
                     PatternEditorFeature::Pointer => {}
                 };
@@ -296,17 +293,17 @@ pub fn pattern_editor() -> Html {
             clear_handle.clone(),
         ),
         |_: MouseEvent, (history_reducer, mousedown_elements_handle, clear_handle)| {
-            let history = &history_reducer.history;
+            let mut history = history_reducer.borrow_mut();
 
             if history.len() >= 2 {
-                history_reducer.dispatch(PatternEditorAction::RemoveHistory);
+                history.pop();
 
                 if let Some(second_last) = history.get(history.len() - 2) {
-                    mousedown_elements_handle.set(second_last.clone());
+                    mousedown_elements_handle.set(hashmap_to_imap(second_last.clone()));
                     clear_handle.set(true);
                 }
             } else {
-                history_reducer.dispatch(PatternEditorAction::RemoveHistory);
+                history.pop();
                 mousedown_elements_handle.set(IMap::default());
                 clear_handle.set(true);
             }
@@ -345,6 +342,7 @@ pub fn pattern_editor() -> Html {
         },
     );
 
+    info!("render");
     html! {
         <div onmouseup={handle_mouseup}>
             <form onsubmit={handle_dimensions_submit}>
