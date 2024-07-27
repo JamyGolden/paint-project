@@ -281,7 +281,7 @@ pub fn pattern_editor() -> Html {
                         mousedown_elements_handle.set(IMap::default());
                         is_mousedown_handle.set(false);
 
-                        history_reducer.dispatch(PatternEditorAction::AddHistory(grid));
+                        // history_reducer.dispatch(PatternEditorAction::AddHistory(grid));
                     }
                     PatternEditorFeature::Pointer => {}
                 };
